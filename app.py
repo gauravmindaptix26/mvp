@@ -38,10 +38,34 @@ def search():
         query = request.json.get("query", "")
 
         filter_prompt = f"""
-Extract influencer search filters from this query.
+Extract search filters from this influencer search query.
 Query: {query}
-Return JSON only with these keys: city, category, max_budget, min_followers
-Example: {{"city":"","category":"","max_budget":null,"min_followers":null}}
+
+Excel columns available:
+- Name (influencer name)
+- Followers (number)
+- Category (e.g. Trading, Business and Marketing, Personal finance, Career)
+- Location (city name)
+- Reel + story reshare (price in rupees)
+- Story (price in rupees)
+- Static Post (price in rupees)
+- UGC (Social media but No Ads) (price in rupees)
+- UGC with 1 Month RIghts (price in rupees)
+- 1 Month Digital RIghts (price in rupees)
+
+Return JSON only with these keys (use null if not mentioned):
+{{
+  "name": "",
+  "category": "",
+  "location": "",
+  "min_followers": null,
+  "max_followers": null,
+  "max_reel_price": null,
+  "max_story_price": null,
+  "max_static_price": null,
+  "max_ugc_price": null,
+  "max_digital_rights_price": null
+}}
 """
         filter_response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -56,29 +80,35 @@ Example: {{"city":"","category":"","max_budget":null,"min_followers":null}}
         filters = json.loads(filter_response.choices[0].message.content.strip())
         filtered = df.copy()
 
-        city = filters.get("city") or filters.get("location") or ""
-        if city:
-            filtered = filtered[
-                filtered["Location"].astype(str).str.contains(city, case=False, na=False)
-            ]
+        if filters.get("name"):
+            filtered = filtered[filtered["Name"].astype(str).str.contains(filters["name"], case=False, na=False)]
 
-        category = filters.get("category") or ""
-        if category:
-            filtered = filtered[
-                filtered["Category"].astype(str).str.contains(category, case=False, na=False)
-            ]
+        if filters.get("location"):
+            filtered = filtered[filtered["Location"].astype(str).str.contains(filters["location"], case=False, na=False)]
 
-        min_followers = filters.get("min_followers")
-        if min_followers:
-            filtered = filtered[
-                pd.to_numeric(filtered["Followers"], errors="coerce") >= min_followers
-            ]
+        if filters.get("category"):
+            filtered = filtered[filtered["Category"].astype(str).str.contains(filters["category"], case=False, na=False)]
 
-        max_budget = filters.get("max_budget")
-        if max_budget:
-            filtered = filtered[
-                pd.to_numeric(filtered["Reel + story reshare"], errors="coerce") <= max_budget
-            ]
+        if filters.get("min_followers"):
+            filtered = filtered[pd.to_numeric(filtered["Followers"], errors="coerce") >= filters["min_followers"]]
+
+        if filters.get("max_followers"):
+            filtered = filtered[pd.to_numeric(filtered["Followers"], errors="coerce") <= filters["max_followers"]]
+
+        if filters.get("max_reel_price"):
+            filtered = filtered[pd.to_numeric(filtered["Reel + story reshare"], errors="coerce") <= filters["max_reel_price"]]
+
+        if filters.get("max_story_price"):
+            filtered = filtered[pd.to_numeric(filtered["Story"], errors="coerce") <= filters["max_story_price"]]
+
+        if filters.get("max_static_price"):
+            filtered = filtered[pd.to_numeric(filtered["Static Post"], errors="coerce") <= filters["max_static_price"]]
+
+        if filters.get("max_ugc_price"):
+            filtered = filtered[pd.to_numeric(filtered["UGC (Social media but No Ads)"], errors="coerce") <= filters["max_ugc_price"]]
+
+        if filters.get("max_digital_rights_price"):
+            filtered = filtered[pd.to_numeric(filtered["1 Month Digital RIghts"], errors="coerce") <= filters["max_digital_rights_price"]]
 
         filtered = filtered.head(10)
         creators = filtered.fillna("").to_dict(orient="records")
