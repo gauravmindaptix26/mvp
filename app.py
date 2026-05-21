@@ -9,7 +9,8 @@ load_dotenv()
 
 app = Flask(__name__)
 
-df = pd.read_excel("creators.xlsx", header=1)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+df = pd.read_excel(os.path.join(BASE_DIR, "creators.xlsx"), header=1)
 
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
