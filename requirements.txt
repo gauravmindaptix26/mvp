@@ -1,5 +1,5 @@
 flask
-groq
+openai
 pandas
 openpyxl
 python-dotenv
