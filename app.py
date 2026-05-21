@@ -18,6 +18,20 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 def index():
     return render_template("index.html")
 
+@app.route("/debug")
+def debug():
+    import sys
+    key = os.getenv("OPENAI_API_KEY")
+    excel_path = os.path.join(BASE_DIR, "creators.xlsx")
+    return jsonify({
+        "api_key_set": bool(key),
+        "api_key_prefix": key[:8] if key else None,
+        "excel_exists": os.path.exists(excel_path),
+        "excel_path": excel_path,
+        "df_rows": len(df) if df is not None else 0,
+        "python": sys.version
+    })
+
 @app.route("/search", methods=["POST"])
 def search():
     try:
