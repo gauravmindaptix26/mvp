@@ -12,9 +12,7 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 df = pd.read_excel(os.path.join(BASE_DIR, "creators.xlsx"), header=1)
 
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
-)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.route("/")
 def index():
@@ -22,129 +20,70 @@ def index():
 
 @app.route("/search", methods=["POST"])
 def search():
+    try:
+        query = request.json.get("query", "")
 
-    query = request.json["query"]
-
-    # Step 1: Extract filters using OpenAI
-    filter_prompt = f"""
+        filter_prompt = f"""
 Extract influencer search filters from this query.
-
-Query:
-{query}
-
-Return JSON only.
-
-Example:
-{{
-  "city":"",
-  "category":"",
-  "max_budget":null,
-  "min_followers":null
-}}
+Query: {query}
+Return JSON only with these keys: city, category, max_budget, min_followers
+Example: {{"city":"","category":"","max_budget":null,"min_followers":null}}
 """
+        filter_response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a JSON extractor. Return only valid JSON, no markdown."},
+                {"role": "user", "content": filter_prompt}
+            ],
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
 
-    filter_response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role":"system","content":"You are a JSON extractor. Return only valid JSON, no markdown, no explanation."},
-            {"role":"user","content":filter_prompt}
-        ],
-        temperature=0,
-        response_format={"type": "json_object"}
-    )
+        filters = json.loads(filter_response.choices[0].message.content.strip())
+        filtered = df.copy()
 
-    raw = filter_response.choices[0].message.content.strip()
-    filters = json.loads(raw)
+        city = filters.get("city") or filters.get("location") or ""
+        if city:
+            filtered = filtered[
+                filtered["Location"].astype(str).str.contains(city, case=False, na=False)
+            ]
 
-    filtered = df.copy()
+        category = filters.get("category") or ""
+        if category:
+            filtered = filtered[
+                filtered["Category"].astype(str).str.contains(category, case=False, na=False)
+            ]
 
-    # City
-    city = filters.get("city") or filters.get("location") or ""
-    if city:
-        filtered = filtered[
-            filtered["Location"]
-            .astype(str)
-            .str.contains(city, case=False, na=False)
-        ]
+        min_followers = filters.get("min_followers")
+        if min_followers:
+            filtered = filtered[
+                pd.to_numeric(filtered["Followers"], errors="coerce") >= min_followers
+            ]
 
-    # Category
-    if filters.get("category"):
-        filtered = filtered[
-            filtered["Category"]
-            .astype(str)
-            .str.contains(
-                filters["category"],
-                case=False,
-                na=False
-            )
-        ]
+        max_budget = filters.get("max_budget")
+        if max_budget:
+            filtered = filtered[
+                pd.to_numeric(filtered["Reel + story reshare"], errors="coerce") <= max_budget
+            ]
 
-    # Followers
-    if filters.get("min_followers"):
-        filtered = filtered[
-            pd.to_numeric(
-                filtered["Followers"],
-                errors="coerce"
-            ) >= filters["min_followers"]
-        ]
+        filtered = filtered.head(10)
+        creators = filtered.fillna("").to_dict(orient="records")
 
-    # Budget
-    if filters.get("max_budget"):
-        filtered = filtered[
-            pd.to_numeric(
-                filtered["Reel + story reshare"],
-                errors="coerce"
-            ) <= filters["max_budget"]
-        ]
-
-    filtered = filtered.head(10)
-
-    print("=== FILTERS:", filters)
-    print("=== RESULTS COUNT:", len(filtered))
-    print("=== COLUMNS:", df.columns.tolist())
-
-    creators = filtered.fillna("").to_dict(orient="records")
-
-    # Step 2: Natural GPT Response
-    summary_prompt = f"""
-User asked:
-
-{query}
-
-Matching creators:
-
-{creators}
-
-Write a professional response like ChatGPT.
-
-Requirements:
-- Mention total creators found.
-- Explain why they match.
-- Recommend best options.
-- Keep under 150 words.
+        summary_prompt = f"""
+User asked: {query}
+Matching creators: {creators}
+Write a professional 2-3 line response. Mention total found and best recommendations.
 """
+        summary_response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": summary_prompt}]
+        )
+        summary = summary_response.choices[0].message.content
 
-    summary_response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role":"user",
-                "content":summary_prompt
-            }
-        ]
-    )
+        return jsonify({"summary": summary, "results": creators})
 
-    summary = (
-        summary_response
-        .choices[0]
-        .message
-        .content
-    )
-
-    return jsonify({
-        "summary": summary,
-        "results": creators
-    })
+    except Exception as e:
+        return jsonify({"error": str(e), "summary": f"Error: {str(e)}", "results": []}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
