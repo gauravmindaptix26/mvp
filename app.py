@@ -2,7 +2,7 @@ import os
 import json
 import pandas as pd
 from flask import Flask, request, jsonify, render_template
-from openai import OpenAI
+from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,7 +12,7 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 df = pd.read_excel(os.path.join(BASE_DIR, "creators.xlsx"), header=1)
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 @app.route("/")
 def index():
@@ -44,7 +44,7 @@ Return JSON only with these keys: city, category, max_budget, min_followers
 Example: {{"city":"","category":"","max_budget":null,"min_followers":null}}
 """
         filter_response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": "You are a JSON extractor. Return only valid JSON, no markdown."},
                 {"role": "user", "content": filter_prompt}
@@ -89,7 +89,7 @@ Matching creators: {creators}
 Write a professional 2-3 line response. Mention total found and best recommendations.
 """
         summary_response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": summary_prompt}]
         )
         summary = summary_response.choices[0].message.content
