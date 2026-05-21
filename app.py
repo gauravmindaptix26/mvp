@@ -110,7 +110,7 @@ Return JSON only with these keys (use null if not mentioned):
         if filters.get("max_digital_rights_price"):
             filtered = filtered[pd.to_numeric(filtered["1 Month Digital RIghts"], errors="coerce") <= filters["max_digital_rights_price"]]
 
-        filtered = filtered.head(10)
+        filtered = filtered.head(111)
         creators = filtered.fillna("").to_dict(orient="records")
 
         summary_prompt = f"""
